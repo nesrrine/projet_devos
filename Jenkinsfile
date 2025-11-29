@@ -25,11 +25,17 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials-id') {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
                         docker.image("nesrineromd/projet_devos:latest").push()
                     }
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline terminée"
         }
     }
 }
