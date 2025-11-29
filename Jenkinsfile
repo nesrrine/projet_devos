@@ -4,7 +4,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/<ton_utilisateur>/<ton_projet>.git'
+                git branch: 'main', url: 'https://github.com/nesrrine/projet_devos.git'
             }
         }
 
@@ -17,7 +17,7 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("ton_dockerhub_utilisateur/<nom_image>:latest")
+                    docker.build("nesrineromd/projet_devos:latest")
                 }
             }
         }
@@ -26,7 +26,7 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub-credentials-id') {
-                        docker.image("ton_dockerhub_utilisateur/<nom_image>:latest").push()
+                        docker.image("nesrineromd/projet_devos:latest").push()
                     }
                 }
             }
