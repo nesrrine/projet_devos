@@ -7,31 +7,33 @@ pipeline {
     }
 
     stages {
+        stage('Checkout') {
+            steps {
+                checkout([$class: 'GitSCM',
+                          branches: [[name: '*/main']],
+                          userRemoteConfigs: [[url: 'https://github.com/nesrrine/projet_devos.git']],
+                          extensions: [[$class: 'CloneOption', shallow: true, depth: 1, noTags: false, timeout: 10]]
+                ])
+            }
+        }
+
         stage('Check Docker Image') {
             steps {
                 script {
-                    // Vérifie si l'image existe sur Docker Hub
-                    def imageExists = sh(
-                        script: "docker pull ${DOCKER_IMAGE}:${DOCKER_TAG} >/dev/null 2>&1 && echo 'true' || echo 'false'",
-                        returnStdout: true
-                    ).trim()
-
-                    if (imageExists == "true") {
-                        echo "Image Docker déjà existante, on ne rebuild pas."
-                        currentBuild.result = 'SUCCESS'
-                        // Définit une variable pour sauter les builds
-                        env.SKIP_BUILD = "true"
+                    def imageExists = sh(script: "docker image inspect ${DOCKER_IMAGE}:${DOCKER_TAG} > /dev/null 2>&1 || echo 'no'", returnStdout: true).trim()
+                    if(imageExists == "no") {
+                        env.BUILD_MAVEN = "true"
                     } else {
-                        echo "Image Docker non trouvée, build nécessaire."
-                        env.SKIP_BUILD = "false"
+                        env.BUILD_MAVEN = "false"
                     }
+                    echo "Build Maven needed? ${env.BUILD_MAVEN}"
                 }
             }
         }
 
-        stage('Clean & Build Maven') {
+        stage('Build Maven Project') {
             when {
-                expression { env.SKIP_BUILD != "true" }
+                expression { env.BUILD_MAVEN == "true" }
             }
             steps {
                 sh 'mvn clean install -DskipTests -B'
@@ -40,11 +42,12 @@ pipeline {
 
         stage('Build Docker Image') {
             when {
-                expression { env.SKIP_BUILD != "true" }
+                expression { env.BUILD_MAVEN == "true" }
             }
             steps {
-                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-                sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                }
             }
         }
 
@@ -52,10 +55,10 @@ pipeline {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo \\$DOCKER_PASS | docker login -u \\$DOCKER_USER --password-stdin
+                        sh '''
+                            echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
                             docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        """
+                        '''
                     }
                 }
             }
