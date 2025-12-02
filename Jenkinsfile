@@ -17,18 +17,24 @@ pipeline {
         stage('Clean & Build') {
             steps {
                 echo "Nettoyage et compilation du projet Maven"
-                sh 'mvn clean package -DskipTests'
+                sh 'mvn clean package -DskipTests -B'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Construction de l'image Docker"
-                    // Vérifie si Docker est disponible
-                    sh 'docker --version'
-                    // Build de l'image Docker avec tag
-                    sh "docker build -t ${DOCKER_IMAGE}:latest ."
+                    echo "Vérification de Docker"
+                    def dockerAvailable = sh(script: 'docker --version', returnStatus: true)
+                    if (dockerAvailable != 0) {
+                        error "Docker n'est pas installé ou n'est pas accessible par Jenkins."
+                    }
+
+                    echo "Construction de l'image Docker ${DOCKER_IMAGE}:latest"
+                    def buildStatus = sh(script: "docker build -t ${DOCKER_IMAGE}:latest .", returnStatus: true)
+                    if (buildStatus != 0) {
+                        error "Erreur lors de la construction de l'image Docker."
+                    }
                 }
             }
         }
@@ -40,10 +46,15 @@ pipeline {
                     withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", 
                                                      usernameVariable: 'DOCKER_USER', 
                                                      passwordVariable: 'DOCKER_PASS')]) {
-                        sh """
-                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                            docker push ${DOCKER_IMAGE}:latest
-                        """
+                        def loginStatus = sh(script: "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin", returnStatus: true)
+                        if (loginStatus != 0) {
+                            error "Échec de la connexion à Docker Hub."
+                        }
+
+                        def pushStatus = sh(script: "docker push ${DOCKER_IMAGE}:latest", returnStatus: true)
+                        if (pushStatus != 0) {
+                            error "Erreur lors du push de l'image Docker."
+                        }
                     }
                 }
             }
