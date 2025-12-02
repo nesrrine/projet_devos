@@ -8,21 +8,14 @@ pipeline {
             }
         }
 
-        stage('Clean & Build') {
+        stage('Build Maven Project (optional)') {
             steps {
+                // Tu peux commenter cette ligne si le JAR est déjà buildé
                 sh 'mvn clean install -DskipTests -B'
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    sh "docker build -t nesrineromd/projet_devos:latest ."
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
+        stage('Push Existing Docker Image') {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
