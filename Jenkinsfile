@@ -3,51 +3,58 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "nesrineromd/projet_devos"
+        DOCKER_TAG = "latest"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Check Docker Image') {
             steps {
-                // Clone rapide, shallow clone pour gagner du temps
-                checkout([$class: 'GitSCM',
-                          branches: [[name: '*/main']],
-                          userRemoteConfigs: [[url: 'https://github.com/nesrrine/projet_devos.git']],
-                          extensions: [[$class: 'CloneOption', shallow: true, depth: 1, noTags: false, reference: '', timeout: 10]]
-                ])
+                script {
+                    // Vérifie si l'image existe sur Docker Hub
+                    def imageExists = sh(
+                        script: "docker pull ${DOCKER_IMAGE}:${DOCKER_TAG} >/dev/null 2>&1 && echo 'true' || echo 'false'",
+                        returnStdout: true
+                    ).trim()
+
+                    if (imageExists == "true") {
+                        echo "Image Docker déjà existante, on ne rebuild pas."
+                        currentBuild.result = 'SUCCESS'
+                        // Définit une variable pour sauter les builds
+                        env.SKIP_BUILD = "true"
+                    } else {
+                        echo "Image Docker non trouvée, build nécessaire."
+                        env.SKIP_BUILD = "false"
+                    }
+                }
             }
         }
 
-        stage('Clean & Build') {
+        stage('Clean & Build Maven') {
+            when {
+                expression { env.SKIP_BUILD != "true" }
+            }
             steps {
-                // Build Maven
                 sh 'mvn clean install -DskipTests -B'
             }
         }
 
         stage('Build Docker Image') {
+            when {
+                expression { env.SKIP_BUILD != "true" }
+            }
             steps {
-                script {
-                    // Build Docker avec tag unique par build
-                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
-                }
+                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:${DOCKER_TAG}"
             }
         }
 
         stage('Push Docker Image') {
             steps {
                 script {
-                    // Utilisation sécurisée des credentials Jenkins
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
-                            # Login Docker de manière sécurisée
-                            echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                            
-                            # Push image versionnée
-                            docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
-                            
-                            # Push latest
-                            docker push ${DOCKER_IMAGE}:latest
+                            echo \\$DOCKER_PASS | docker login -u \\$DOCKER_USER --password-stdin
+                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                         """
                     }
                 }
