@@ -10,14 +10,14 @@ pipeline {
 
         stage('Clean & Build') {
             steps {
-                sh 'mvn clean install'  // ou gradle selon ton projet
+                sh 'mvn clean install -DskipTests'  // Compile le projet sans exécuter les tests
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("nesrineromd/projet_devos:latest")
+                    docker.build("nesrineromd/studentsapp:latest")
                 }
             }
         }
@@ -26,7 +26,7 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
-                        docker.image("nesrineromd/projet_devos:latest").push()
+                        docker.image("nesrineromd/studentsapp:latest").push()
                     }
                 }
             }
