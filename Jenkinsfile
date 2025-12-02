@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    environment {
+        DOCKER_IMAGE = "nesrineromd/projet_devos"
+    }
+
     stages {
         stage('Checkout') {
             steps {
@@ -8,20 +12,32 @@ pipeline {
             }
         }
 
-        stage('Build Maven Project (optional)') {
+        stage('Clean & Build') {
             steps {
-                // Tu peux commenter cette ligne si le JAR est déjà buildé
                 sh 'mvn clean install -DskipTests -B'
             }
         }
 
-        stage('Push Existing Docker Image') {
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build image avec tag unique BUILD_NUMBER
+                    sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
+                    
+                    // Tag latest
+                    sh "docker tag ${DOCKER_IMAGE}:${BUILD_NUMBER} ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
             steps {
                 script {
                     withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh """
                             echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                            docker push nesrineromd/projet_devos:latest
+                            docker push ${DOCKER_IMAGE}:${BUILD_NUMBER}
+                            docker push ${DOCKER_IMAGE}:latest
                         """
                     }
                 }
@@ -31,7 +47,7 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline terminée"
+            echo "Pipeline terminée ✅"
         }
     }
 }
