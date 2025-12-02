@@ -16,21 +16,21 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t nesrineromd/projet_devos:latest .'
+                script {
+                    sh "docker build -t nesrineromd/projet_devos:latest ."
+                }
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-                    sh '''
-                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        docker push nesrineromd/projet_devos:latest
-                    '''
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                            docker push nesrineromd/projet_devos:latest
+                        """
+                    }
                 }
             }
         }
