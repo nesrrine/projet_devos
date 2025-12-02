@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        // Nom de l'image Docker sur Docker Hub
         DOCKER_IMAGE = "nesrineromd/studentsapp"
-        // Identifiant du credentials Docker Hub configuré dans Jenkins
         DOCKER_CREDENTIALS_ID = "dockerhub"
     }
 
@@ -19,7 +17,7 @@ pipeline {
         stage('Clean & Build') {
             steps {
                 echo "Nettoyage et compilation du projet Maven"
-                sh 'mvn clean install -DskipTests'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
@@ -27,7 +25,10 @@ pipeline {
             steps {
                 script {
                     echo "Construction de l'image Docker"
-                    docker.build("${DOCKER_IMAGE}:latest")
+                    // Vérifie si Docker est disponible
+                    sh 'docker --version'
+                    // Build de l'image Docker avec tag
+                    sh "docker build -t ${DOCKER_IMAGE}:latest ."
                 }
             }
         }
@@ -36,8 +37,13 @@ pipeline {
             steps {
                 script {
                     echo "Push de l'image Docker sur Docker Hub"
-                    docker.withRegistry('https://index.docker.io/v1/', DOCKER_CREDENTIALS_ID) {
-                        docker.image("${DOCKER_IMAGE}:latest").push()
+                    withCredentials([usernamePassword(credentialsId: "${DOCKER_CREDENTIALS_ID}", 
+                                                     usernameVariable: 'DOCKER_USER', 
+                                                     passwordVariable: 'DOCKER_PASS')]) {
+                        sh """
+                            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                            docker push ${DOCKER_IMAGE}:latest
+                        """
                     }
                 }
             }
