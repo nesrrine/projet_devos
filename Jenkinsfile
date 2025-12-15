@@ -7,8 +7,6 @@ pipeline {
         KUBE_NAMESPACE = "devops"
         DEPLOYMENT_FILE = "springboot-deployment.yaml"
         SERVICE_NAME = "springboot-service"
-        NODE_PORT = "32035" // remplacer par le port NodePort exposé dans ton YAML
-        SERVER_IP = "192.168.49.2" // IP de ton Minikube ou serveur
     }
 
     stages {
@@ -34,21 +32,13 @@ pipeline {
         }
 
         stage('Build Maven Project') {
-            when {
-                expression { env.BUILD_MAVEN == "true" }
-            }
-            steps {
-                sh 'mvn clean install -DskipTests -B'
-            }
+            when { expression { env.BUILD_MAVEN == "true" } }
+            steps { sh 'mvn clean install -DskipTests -B' }
         }
 
         stage('Build Docker Image') {
-            when {
-                expression { env.BUILD_MAVEN == "true" }
-            }
-            steps {
-                sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
-            }
+            when { expression { env.BUILD_MAVEN == "true" } }
+            steps { sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ." }
         }
 
         stage('Push Docker Image') {
@@ -67,7 +57,6 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    // Vérifier si le namespace existe
                     def nsExists = sh(script: "kubectl get ns ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo 'yes' || echo 'no'", returnStdout: true).trim()
                     if (nsExists == "no") {
                         echo "Création du namespace ${KUBE_NAMESPACE}"
@@ -76,18 +65,7 @@ pipeline {
                         echo "Namespace ${KUBE_NAMESPACE} déjà existant"
                     }
 
-                    // Déployer le YAML
                     sh "kubectl apply -f ${DEPLOYMENT_FILE} -n ${KUBE_NAMESPACE}"
-
-                    // Vérifier si le service existe déjà
-                    def svcExists = sh(script: "kubectl get svc ${SERVICE_NAME} -n ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo 'yes' || echo 'no'", returnStdout: true).trim()
-                    if (svcExists == "yes") {
-                        echo "Service ${SERVICE_NAME} déjà existant"
-                    } else {
-                        echo "Service ${SERVICE_NAME} créé automatiquement"
-                    }
-
-                    // Vérifier les pods
                     sh "kubectl get pods -n ${KUBE_NAMESPACE}"
                 }
             }
@@ -102,32 +80,28 @@ pipeline {
             }
         }
 
- stage('Test API') {
-    steps {
-        script {
-            // Récupérer l'IP de Minikube
-            def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
+        stage('Test API') {
+            steps {
+                script {
+                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
+                    def nodePort = sh(script: "kubectl get svc ${SERVICE_NAME} -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
+                    def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
+                    echo "URL du service : ${serviceURL}"
 
-            // Récupérer automatiquement le NodePort du service
-            def nodePort = sh(script: "kubectl get svc ${SERVICE_NAME} -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
-
-            def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
-            echo "URL du service : ${serviceURL}"
-
-            // Retry 3 fois si le service n'est pas encore prêt
-            retry(3) {
-                sleep(time: 5, unit: 'SECONDS')
-                def response = sh(script: "curl -s --fail ${serviceURL}", returnStdout: true).trim()
-                echo "Réponse API : ${response}"
+                    retry(3) {
+                        sleep(time: 5, unit: 'SECONDS')
+                        sh "curl -s --fail ${serviceURL}"
+                    }
+                }
             }
         }
-    }
-}
 
+    } // <- fin de stages
 
     post {
         always {
             echo "Pipeline terminée ✅"
         }
     }
-}
+
+} // <- fin de pipeline
