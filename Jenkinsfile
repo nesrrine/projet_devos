@@ -102,18 +102,28 @@ pipeline {
             }
         }
 
-        stage('Test API') {
-            steps {
-                script {
-                    def serviceURL = "http://${SERVER_IP}:${NODE_PORT}"
-                    echo "URL du service : ${serviceURL}"
+ stage('Test API') {
+    steps {
+        script {
+            // Récupérer l'IP de Minikube
+            def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
 
-                    def response = sh(script: "curl -s ${serviceURL}/student/Depatment/getAllDepartment", returnStdout: true).trim()
-                    echo "Réponse API : ${response}"
-                }
+            // Récupérer automatiquement le NodePort du service
+            def nodePort = sh(script: "kubectl get svc ${SERVICE_NAME} -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
+
+            def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
+            echo "URL du service : ${serviceURL}"
+
+            // Retry 3 fois si le service n'est pas encore prêt
+            retry(3) {
+                sleep(time: 5, unit: 'SECONDS')
+                def response = sh(script: "curl -s --fail ${serviceURL}", returnStdout: true).trim()
+                echo "Réponse API : ${response}"
             }
         }
     }
+}
+
 
     post {
         always {
