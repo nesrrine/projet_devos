@@ -5,8 +5,10 @@ pipeline {
         DOCKER_IMAGE = "nesrineromd/projet_devos"
         DOCKER_TAG = "latest"
         KUBE_NAMESPACE = "devops"
-        SERVICE_NAME = "springboot-service"
         DEPLOYMENT_FILE = "springboot-deployment.yaml"
+        SERVICE_NAME = "springboot-service"
+        NODE_PORT = "32035" // remplacer par le port NodePort exposé dans ton YAML
+        SERVER_IP = "192.168.49.2" // IP de ton Minikube ou serveur
     }
 
     stages {
@@ -16,7 +18,7 @@ pipeline {
                 checkout([$class: 'GitSCM',
                           branches: [[name: '*/main']],
                           userRemoteConfigs: [[url: 'https://github.com/nesrrine/projet_devos.git']],
-                          extensions: [[$class: 'CloneOption', shallow: true, depth: 1]]
+                          extensions: [[$class: 'CloneOption', shallow: true, depth: 1, noTags: false, timeout: 10]]
                 ])
             }
         }
@@ -62,61 +64,30 @@ pipeline {
             }
         }
 
-        stage('Generate Kubernetes YAML') {
-            steps {
-                script {
-                    echo "Création dynamique du YAML de déploiement..."
-                    writeFile file: "${DEPLOYMENT_FILE}", text: """
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: springboot-deployment
-  namespace: ${KUBE_NAMESPACE}
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: springboot
-  template:
-    metadata:
-      labels:
-        app: springboot
-    spec:
-      containers:
-      - name: springboot
-        image: ${DOCKER_IMAGE}:${DOCKER_TAG}
-        ports:
-        - containerPort: 8089
-        env:
-        - name: SPRING_DATASOURCE_URL
-          value: "jdbc:mysql://mysql-service:3306/mydb?createDatabaseIfNotExist=true"
-        - name: SPRING_DATASOURCE_USERNAME
-          value: "root"
-        - name: SPRING_DATASOURCE_PASSWORD
-          value: "root"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: ${SERVICE_NAME}
-  namespace: ${KUBE_NAMESPACE}
-spec:
-  selector:
-    app: springboot
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8089
-  type: NodePort
-"""
-                }
-            }
-        }
-
         stage('Deploy to Kubernetes') {
             steps {
                 script {
+                    // Vérifier si le namespace existe
+                    def nsExists = sh(script: "kubectl get ns ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo 'yes' || echo 'no'", returnStdout: true).trim()
+                    if (nsExists == "no") {
+                        echo "Création du namespace ${KUBE_NAMESPACE}"
+                        sh "kubectl create namespace ${KUBE_NAMESPACE}"
+                    } else {
+                        echo "Namespace ${KUBE_NAMESPACE} déjà existant"
+                    }
+
+                    // Déployer le YAML
                     sh "kubectl apply -f ${DEPLOYMENT_FILE} -n ${KUBE_NAMESPACE}"
+
+                    // Vérifier si le service existe déjà
+                    def svcExists = sh(script: "kubectl get svc ${SERVICE_NAME} -n ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo 'yes' || echo 'no'", returnStdout: true).trim()
+                    if (svcExists == "yes") {
+                        echo "Service ${SERVICE_NAME} déjà existant"
+                    } else {
+                        echo "Service ${SERVICE_NAME} créé automatiquement"
+                    }
+
+                    // Vérifier les pods
                     sh "kubectl get pods -n ${KUBE_NAMESPACE}"
                 }
             }
@@ -125,7 +96,8 @@ spec:
         stage('Wait for Pod Ready') {
             steps {
                 script {
-                    sh "kubectl wait --for=condition=ready pod -l app=springboot -n ${KUBE_NAMESPACE} --timeout=120s"
+                    echo "Attente que le pod soit en Running..."
+                    sh "kubectl wait --for=condition=ready pod -l app=springboot -n ${KUBE_NAMESPACE} --timeout=180s"
                 }
             }
         }
@@ -133,8 +105,9 @@ spec:
         stage('Test API') {
             steps {
                 script {
-                    def serviceURL = sh(script: "minikube service ${SERVICE_NAME} -n ${KUBE_NAMESPACE} --url", returnStdout: true).trim()
+                    def serviceURL = "http://${SERVER_IP}:${NODE_PORT}"
                     echo "URL du service : ${serviceURL}"
+
                     def response = sh(script: "curl -s ${serviceURL}/student/Depatment/getAllDepartment", returnStdout: true).trim()
                     echo "Réponse API : ${response}"
                 }
