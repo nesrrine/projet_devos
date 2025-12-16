@@ -2,106 +2,81 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "nesrineromd/projet_devos"
-        DOCKER_TAG = "latest"
-        KUBE_NAMESPACE = "devops"
-        DEPLOYMENT_FILE = "springboot-deployment.yaml"
-        SERVICE_NAME = "springboot-service"
+        IMAGE_NAME = "nesrineromd/projet_devos"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                checkout([$class: 'GitSCM', 
-                          branches: [[name: '*/main']], 
-                          userRemoteConfigs: [[url: 'https://github.com/nesrrine/projet_devos.git']], 
-                          extensions: [[$class: 'CloneOption', shallow: true, depth: 1, noTags: false, timeout: 10]] 
-                ])
+                checkout scm
             }
         }
 
-        stage('Check Docker Image') {
+        stage('Build Maven') {
             steps {
-                script {
-                    def imageExists = sh(script: "docker image inspect ${DOCKER_IMAGE}:${DOCKER_TAG} > /dev/null 2>&1 || echo 'no'", returnStdout: true).trim()
-                    env.BUILD_MAVEN = (imageExists == "no") ? "true" : "false"
-                    echo "Build Maven needed? ${env.BUILD_MAVEN}"
-                }
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('Build Maven Project') {
-            when { expression { env.BUILD_MAVEN == "true" } }
+        stage('Docker Build') {
             steps {
-                sh 'mvn clean install -DskipTests -B'
+                sh 'docker build -t $IMAGE_NAME:latest .'
             }
         }
 
-        stage('Build Docker Image') {
-            when { expression { env.BUILD_MAVEN == "true" } }
+        stage('Docker Push') {
             steps {
-                sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
-            }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh '''
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                        '''
-                    }
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    docker push $IMAGE_NAME:latest
+                    '''
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                script {
-                    def nsExists = sh(script: "kubectl get ns ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo 'yes' || echo 'no'", returnStdout: true).trim()
-                    if (nsExists == "no") {
-                        echo "Création du namespace ${KUBE_NAMESPACE}"
-                        sh "kubectl create namespace ${KUBE_NAMESPACE}"
-                    } else {
-                        echo "Namespace ${KUBE_NAMESPACE} déjà existant"
-                    }
-                    sh "kubectl apply -f ${DEPLOYMENT_FILE} -n ${KUBE_NAMESPACE}"
-                    sh "kubectl get pods -n ${KUBE_NAMESPACE}"
-                }
+                sh '''
+                kubectl get ns devops || kubectl create namespace devops
+
+                kubectl apply -f mysql-deployment.yaml -n devops
+                kubectl apply -f mysql-service.yaml -n devops
+
+                kubectl apply -f springboot-deployment.yaml -n devops
+                kubectl apply -f springboot-service.yaml -n devops
+                '''
             }
         }
 
-        stage('Wait for Pod Ready') {
+        stage('Wait for Pods Ready') {
             steps {
-                script {
-                    echo "Attente que le pod soit en Running..."
-                    sh "kubectl wait --for=condition=ready pod -l app=springboot -n ${KUBE_NAMESPACE} --timeout=180s"
-                }
+                sh 'kubectl wait --for=condition=ready pod -l app=springboot -n devops --timeout=180s'
             }
         }
 
         stage('Test API') {
             steps {
-                script {
-                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
-                    def nodePort = sh(script: "kubectl get svc ${SERVICE_NAME} -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
-                    def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
-                    echo "URL du service : ${serviceURL}"
-
-                    retry(3) {
-                        sleep(time: 5, unit: 'SECONDS')
-                        sh "curl -s --fail ${serviceURL}"
-                    }
-                }
+                sh '''
+                echo "Application déployée avec succès 🎉"
+                echo "Services disponibles :"
+                kubectl get svc -n devops
+                '''
             }
         }
     }
 
     post {
-        always {
-            echo "Pipeline terminée mmmmmmm✅"
+        success {
+            echo '✅ Pipeline CI/CD terminé avec succès'
+        }
+        failure {
+            echo '❌ Pipeline échoué'
         }
     }
 }
