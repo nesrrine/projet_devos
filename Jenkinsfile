@@ -57,7 +57,6 @@ pipeline {
                         echo "Namespace ${KUBE_NAMESPACE} déjà existant"
                     }
 
-                    // Déploiement dynamique
                     sh """
                     kubectl apply -n ${KUBE_NAMESPACE} -f - <<EOF
 apiVersion: apps/v1
@@ -110,20 +109,48 @@ EOF
         stage('Test API') {
             steps {
                 script {
-                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
-                    def nodePort = sh(script: "kubectl get svc ${APP_NAME}-service -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
-                    def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
-                    echo "URL du service : ${serviceURL}"
-                    retry(3) {
-                        sleep(time: 5, unit: 'SECONDS')
-                        sh "curl -s --fail ${serviceURL}"
+                    echo "Redirection du service Spring Boot vers localhost..."
+
+                    // Lancer le port-forward en arrière-plan
+                    sh """
+                        kubectl port-forward svc/${APP_NAME}-service 8080:80 -n ${KUBE_NAMESPACE} &
+                        PF_PID=\$!
+                        echo \$PF_PID > portforward.pid
+                    """
+
+                    // Attendre que Spring Boot soit prêt
+                    sleep(time:10, unit:"SECONDS")
+
+                    // Test API avec retry
+                    def retries = 5
+                    def success = false
+                    for (int i = 1; i <= retries; i++) {
+                        try {
+                            sh "curl -s --fail http://localhost:8080/student/Depatment/getAllDepartment"
+                            echo "API test réussie ✅"
+                            success = true
+                            break
+                        } catch (err) {
+                            echo "Échec de l'API, tentative ${i}/${retries}..."
+                            sleep(time:5, unit:"SECONDS")
+                        }
                     }
+
+                    if (!success) {
+                        error "Impossible d'atteindre l'API après ${retries} essais 🚨"
+                    }
+
+                    // Arrêter proprement le port-forward
+                    sh """
+                        kill \$(cat portforward.pid)
+                        rm portforward.pid
+                    """
                 }
             }
         }
     }
+
     post {
         always { echo "Pipeline terminée ✅" }
     }
 }
-
