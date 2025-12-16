@@ -107,20 +107,19 @@ EOF
             }
         }
 
-        stage('Test API') {
-            steps {
-                script {
-                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
-                    def nodePort = sh(script: "kubectl get svc ${APP_NAME}-service -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
-                    def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
-                    echo "URL du service : ${serviceURL}"
-                    retry(3) {
-                        sleep(time: 5, unit: 'SECONDS')
-                        sh "curl -s --fail ${serviceURL}"
-                    }
-                }
+        stage('Test API via Port-Forward') {
+    steps {
+        script {
+            def serviceURL = "http://localhost:8089/Depatment/getAllDepartment"
+            echo "URL du service : ${serviceURL}"
+            retry(3) {
+                sleep(time: 5, unit: 'SECONDS')
+                sh "curl -s --fail ${serviceURL}"
             }
         }
+    }
+}
+
     }
     post {
         always { echo "Pipeline terminée ✅" }
