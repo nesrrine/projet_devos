@@ -106,24 +106,23 @@ EOF
             }
         }
 
-        stage('Test API') {
-            steps {
-                script {
-                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
-                    def nodePort = sh(script: "kubectl get svc ${APP_NAME}-service -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
-                    def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
-                    echo "URL du service : ${serviceURL}"
+    stage('Test API') {
+    steps {
+        script {
+            def serviceURL = "http://${APP_NAME}-service/student/Depatment/getAllDepartment"
+            echo "URL du service : ${serviceURL}"
 
-                    // Attendre un peu pour que Spring Boot démarre
-                    sleep(time: 10, unit: 'SECONDS')
+            // Attendre que Spring Boot soit prêt
+            sleep(time: 15, unit: 'SECONDS')
 
-                    retry(5) {
-                        sleep(time: 5, unit: 'SECONDS')
-                        sh "curl -s --fail ${serviceURL}"
-                    }
-                }
+            retry(5) {
+                sleep(time: 5, unit: 'SECONDS')
+                sh "curl -s --fail ${serviceURL}"
             }
         }
+    }
+}
+
     } // <-- fermeture du bloc stages
 
     post {
