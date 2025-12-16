@@ -103,7 +103,8 @@ spec:
   selector:
     app: ${APP_NAME}
   ports:
-    - port: 80
+    - protocol: TCP
+      port: 80
       targetPort: 8089
 EOF
 """
@@ -125,35 +126,27 @@ EOF
                         returnStdout: true
                     ).trim()
 
-                    // ⚡ Test depuis le pod avec localhost
-                    def serviceURL = "http://localhost:8089/Depatment/getAllDepartment"
                     echo "Test API depuis le pod : ${podName}"
-
                     sh """
 kubectl exec -n ${KUBE_NAMESPACE} ${podName} -- \
-curl -s --fail ${serviceURL}
+curl -s --fail http://localhost:8089/Depatment/getAllDepartment
 """
                 }
             }
         }
 
-        stage('Test API (from Jenkins / externe)') {
+        stage('Test API (from Jenkins / Externe)') {
             steps {
                 script {
-                    // Si tu veux tester depuis Jenkins avec NodePort
                     def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
-                    def nodePort = sh(script: "kubectl get svc ${APP_NAME}-service -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
-                    def externalURL = "http://${minikubeIP}:${nodePort}/Depatment/getAllDepartment"
-                    echo "Test API depuis Jenkins : ${externalURL}"
+                    def nodePort  = sh(script: "kubectl get svc ${APP_NAME}-service -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
+                    def serviceURL = "http://${minikubeIP}:${nodePort}/Depatment/getAllDepartment"
 
-                    retry(5) {
-                        sleep(time: 5, unit: 'SECONDS')
-                        sh "curl -s --fail ${externalURL}"
-                    }
+                    echo "Test API depuis Jenkins / Externe : ${serviceURL}"
+                    sh "curl -s --fail ${serviceURL}"
                 }
             }
         }
-
     }
 
     post {
