@@ -1,12 +1,11 @@
 pipeline {
     agent any
     environment {
-        DOCKER_IMAGE   = "nesrineromd/projet_devos"
-        DOCKER_TAG     = "latest"
+        DOCKER_IMAGE = "nesrineromd/projet_devos"
+        DOCKER_TAG = "latest"
         KUBE_NAMESPACE = "devops"
-        APP_NAME       = "springboot"
+        APP_NAME = "springboot"
     }
-
     stages {
         stage('Checkout') {
             steps {
@@ -51,16 +50,11 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    def nsExists = sh(
-                        script: "kubectl get ns ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo yes || echo no",
-                        returnStdout: true
-                    ).trim()
-
+                    // Vérifier namespace
+                    def nsExists = sh(script: "kubectl get ns ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo 'yes' || echo 'no'", returnStdout: true).trim()
                     if (nsExists == "no") {
                         echo "Création du namespace ${KUBE_NAMESPACE}"
                         sh "kubectl create namespace ${KUBE_NAMESPACE}"
-                    } else {
-                        echo "Namespace ${KUBE_NAMESPACE} déjà existant"
                     }
 
                     // Déploiement
@@ -84,20 +78,20 @@ spec:
       - name: ${APP_NAME}
         image: ${DOCKER_IMAGE}:${DOCKER_TAG}
         ports:
-        - containerPort: 8080
+        - containerPort: 8089
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: ${APP_NAME}-service
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: ${APP_NAME}
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 8080
+      targetPort: 8089
 EOF
                     """
                 }
@@ -113,18 +107,29 @@ EOF
         stage('Test API from Pod') {
             steps {
                 script {
-                    // Récupérer le nom du pod
-                    def podName = sh(
-                        script: "kubectl get pod -n ${KUBE_NAMESPACE} -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}'",
-                        returnStdout: true
-                    ).trim()
-
-                    // URL interne Kubernetes (ClusterIP)
-                    def serviceURL = "http://${APP_NAME}-service:80/student/Depatment/getAllDepartment"
+                    // Récupération du pod
+                    def podName = sh(script: "kubectl get pod -n ${KUBE_NAMESPACE} -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}'", returnStdout: true).trim()
+                    def serviceURL = "http://${APP_NAME}-service:80/Depatment/getAllDepartment"
                     echo "Test API depuis le pod : ${podName} via URL interne Kubernetes ${serviceURL}"
 
-                    // Test API depuis le pod
+                    // Test interne depuis le pod
                     sh "kubectl exec -n ${KUBE_NAMESPACE} ${podName} -- curl -s --fail ${serviceURL}"
+                }
+            }
+        }
+
+        stage('Test API from Jenkins / Externe') {
+            steps {
+                script {
+                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
+                    def nodePort = sh(script: "kubectl get svc ${APP_NAME}-service -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
+                    def serviceURL = "http://${minikubeIP}:${nodePort}/Depatment/getAllDepartment"
+                    echo "Test API depuis Jenkins externe : ${serviceURL}"
+
+                    retry(3) {
+                        sleep(time: 5, unit: 'SECONDS')
+                        sh "curl -s --fail ${serviceURL}"
+                    }
                 }
             }
         }
