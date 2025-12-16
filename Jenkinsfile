@@ -113,7 +113,7 @@ EOF
 
                     // Lancer le port-forward en arrière-plan
                     sh """
-                        kubectl port-forward svc/${APP_NAME}-service 8080:80 -n ${KUBE_NAMESPACE} &
+                        kubectl port-forward svc/${APP_NAME}-service 8089:80 -n ${KUBE_NAMESPACE} &
                         PF_PID=\$!
                         echo \$PF_PID > portforward.pid
                     """
@@ -126,7 +126,7 @@ EOF
                     def success = false
                     for (int i = 1; i <= retries; i++) {
                         try {
-                            sh "curl -s --fail http://localhost:8080/student/Depatment/getAllDepartment"
+                            sh "curl -s --fail http://localhost:8089/student/Depatment/getAllDepartment"
                             echo "API test réussie ✅"
                             success = true
                             break
