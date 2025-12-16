@@ -120,7 +120,7 @@ EOF
                     ).trim()
 
                     // URL interne Kubernetes (ClusterIP)
-                    def serviceURL = "http://${APP_NAME}-service:80/Depatment/getAllDepartment"
+                    def serviceURL = "http://${APP_NAME}-service:80/student/Depatment/getAllDepartment"
                     echo "Test API depuis le pod : ${podName} via URL interne Kubernetes ${serviceURL}"
 
                     // Test API depuis le pod
