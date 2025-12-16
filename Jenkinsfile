@@ -92,7 +92,7 @@ spec:
       - name: ${APP_NAME}
         image: ${DOCKER_IMAGE}:${DOCKER_TAG}
         ports:
-        - containerPort: 8080
+        - containerPort: 8089
 ---
 apiVersion: v1
 kind: Service
@@ -103,7 +103,7 @@ spec:
     app: ${APP_NAME}
   ports:
     - port: 80
-      targetPort: 8080
+      targetPort: 8089
 EOF
 """
                 }
