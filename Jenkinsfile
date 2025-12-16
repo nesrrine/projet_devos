@@ -106,21 +106,25 @@ EOF
             }
         }
 
-    stage('Test API') {
+   stage('Test API') {
     steps {
         script {
+            def podName = sh(
+                script: "kubectl get pod -n ${KUBE_NAMESPACE} -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}'",
+                returnStdout: true
+            ).trim()
+
             def serviceURL = "http://${APP_NAME}-service/student/Depatment/getAllDepartment"
-            echo "URL du service : ${serviceURL}"
+            echo "Test depuis le pod : ${podName}"
 
-            // Attendre que Spring Boot soit prêt
-            sleep(time: 15, unit: 'SECONDS')
-
-            retry(5) {
-                sleep(time: 5, unit: 'SECONDS')
-                sh "curl -s --fail ${serviceURL}"
-            }
+            sh """
+              kubectl exec -n ${KUBE_NAMESPACE} ${podName} -- \
+              curl -s --fail ${serviceURL}
+            """
         }
     }
+}
+
 }
 
     } // <-- fermeture du bloc stages
