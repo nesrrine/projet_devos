@@ -99,6 +99,7 @@ kind: Service
 metadata:
   name: ${APP_NAME}-service
 spec:
+  type: NodePort
   selector:
     app: ${APP_NAME}
   ports:
@@ -124,7 +125,8 @@ EOF
                         returnStdout: true
                     ).trim()
 
-                    def serviceURL = "http://${APP_NAME}-service/student/Depatment/getAllDepartment"
+                    // ⚡ Test depuis le pod avec localhost
+                    def serviceURL = "http://localhost:8089/Depatment/getAllDepartment"
                     echo "Test API depuis le pod : ${podName}"
 
                     sh """
@@ -134,6 +136,24 @@ curl -s --fail ${serviceURL}
                 }
             }
         }
+
+        stage('Test API (from Jenkins / externe)') {
+            steps {
+                script {
+                    // Si tu veux tester depuis Jenkins avec NodePort
+                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
+                    def nodePort = sh(script: "kubectl get svc ${APP_NAME}-service -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
+                    def externalURL = "http://${minikubeIP}:${nodePort}/Depatment/getAllDepartment"
+                    echo "Test API depuis Jenkins : ${externalURL}"
+
+                    retry(5) {
+                        sleep(time: 5, unit: 'SECONDS')
+                        sh "curl -s --fail ${externalURL}"
+                    }
+                }
+            }
+        }
+
     }
 
     post {
