@@ -4,6 +4,9 @@ pipeline {
     environment {
         DOCKER_IMAGE = "nesrineromd/projet_devos"
         DOCKER_TAG = "latest"
+        KUBE_NAMESPACE = "devops"
+        DEPLOYMENT_FILE = "springboot-deployment.yaml"
+        SERVICE_NAME = "springboot-service"
     }
 
     stages {
@@ -53,11 +56,52 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    def nsExists = sh(script: "kubectl get ns ${KUBE_NAMESPACE} > /dev/null 2>&1 && echo 'yes' || echo 'no'", returnStdout: true).trim()
+                    if (nsExists == "no") {
+                        echo "Création du namespace ${KUBE_NAMESPACE}"
+                        sh "kubectl create namespace ${KUBE_NAMESPACE}"
+                    } else {
+                        echo "Namespace ${KUBE_NAMESPACE} déjà existant"
+                    }
+                    sh "kubectl apply -f ${DEPLOYMENT_FILE} -n ${KUBE_NAMESPACE}"
+                    sh "kubectl get pods -n ${KUBE_NAMESPACE}"
+                }
+            }
+        }
+
+        stage('Wait for Pod Ready') {
+            steps {
+                script {
+                    echo "Attente que le pod soit en Running..."
+                    sh "kubectl wait --for=condition=ready pod -l app=springboot -n ${KUBE_NAMESPACE} --timeout=180s"
+                }
+            }
+        }
+
+        stage('Test API') {
+            steps {
+                script {
+                    def minikubeIP = sh(script: "minikube ip", returnStdout: true).trim()
+                    def nodePort = sh(script: "kubectl get svc ${SERVICE_NAME} -n ${KUBE_NAMESPACE} -o jsonpath='{.spec.ports[0].nodePort}'", returnStdout: true).trim()
+                    def serviceURL = "http://${minikubeIP}:${nodePort}/student/Depatment/getAllDepartment"
+                    echo "URL du service : ${serviceURL}"
+
+                    retry(3) {
+                        sleep(time: 5, unit: 'SECONDS')
+                        sh "curl -s --fail ${serviceURL}"
+                    }
+                }
+            }
+        }
     }
 
     post {
         always {
-            echo "Pipeline Docker terminée aaaaaaaaaaa✅"
+            echo "Pipeline terminée ✅"
         }
     }
 }
