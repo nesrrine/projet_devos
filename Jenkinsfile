@@ -101,7 +101,7 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline terminée ✅"
+            echo "Pipeline terminée mmmmmmm✅"
         }
     }
 }
